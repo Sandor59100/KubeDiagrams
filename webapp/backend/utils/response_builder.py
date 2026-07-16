@@ -1,10 +1,23 @@
 """Http response builder."""
+import re
 from typing import Any, Dict, Optional
 from flask import jsonify, Response
 
 
 class ResponseBuilder:
     """Http response builder."""
+
+    _TRACEBACK_PATTERNS = (
+        re.compile(r"Traceback \(most recent call last\):"),
+        re.compile(r'File ".*", line \d+'),
+    )
+
+    @staticmethod
+    def _contains_stack_trace(text: str) -> bool:
+        """Return True when text appears to contain a Python stack trace."""
+        if not text:
+            return False
+        return any(pattern.search(text) for pattern in ResponseBuilder._TRACEBACK_PATTERNS)
 
     @staticmethod
     def success(
@@ -53,13 +66,24 @@ class ResponseBuilder:
         Returns:
             tuple[Response, int]: Flask response and status code
         """
+        safe_error = (
+            "An internal error has occurred."
+            if ResponseBuilder._contains_stack_trace(error)
+            else error
+        )
+
         response = {
             "success": False,
-            "error": error
+            "error": safe_error
         }
 
         if details:
-            response.update(details)
+            safe_details = {}
+            for key, value in details.items():
+                if isinstance(value, str) and ResponseBuilder._contains_stack_trace(value):
+                    continue
+                safe_details[key] = value
+            response.update(safe_details)
 
         return jsonify(response), status_code
 
