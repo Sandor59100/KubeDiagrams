@@ -1,6 +1,8 @@
 """Service for generating diagrams from Helm charts."""
 import subprocess
 import os
+import tempfile
+import uuid
 from urllib.parse import urlparse
 
 from constants import MIME_TYPES
@@ -41,9 +43,10 @@ def generate_from_helm(
     # Sanitize so a crafted chart URL can't influence the output path beyond the base name
     base_name = InputValidator.sanitize_filename(base_name) or "chart"
 
-    dot_output = os.path.abspath(f"{base_name}.dot") if output_format == "dot_json" else None
-    requested_output = os.path.abspath(f"{base_name}.{output_format}")
-    png_output = os.path.abspath(f"{base_name}.png")
+    output_base = os.path.join(tempfile.gettempdir(), f"helm-diagram-{uuid.uuid4().hex}")
+    dot_output = f"{output_base}.dot" if output_format == "dot_json" else None
+    requested_output = f"{output_base}.{output_format}"
+    png_output = f"{output_base}.png"
 
     try:
         # Command uses helm-diagrams instead of helm
@@ -160,4 +163,3 @@ def generate_from_helm(
             error=log_unexpected_error(logger, "generating diagram from Helm chart"),
             command=" ".join(cmd) if 'cmd' in locals() else None
         )
-
