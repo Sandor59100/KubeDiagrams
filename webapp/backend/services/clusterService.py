@@ -10,7 +10,7 @@ from constants import MIME_TYPES
 from utils import get_app_logger, log_unexpected_error
 from .models import DiagramResult
 from .file_manager import FileManager
-from .utils import parse_extra_args, has_fatal_error, encode_content, dot_to_dot_json
+from .utils import parse_extra_args, has_fatal_error, encode_content, dot_to_dot_json, redact_temp_paths
 
 logger = get_app_logger(__name__)
 
@@ -150,22 +150,23 @@ def get_current_context() -> str:
         raise RuntimeError(log_unexpected_error(logger, "fetching context"))
 
 
-def _make_diagrams_error(stdout: str, stderr: str, cmd: List[str]) -> DiagramResult:
+def _make_diagrams_error(stdout: str, stderr: str, cmd: List[str], *paths: str) -> DiagramResult:
     """Return a DiagramResult describing why kubectl-diagrams failed."""
+    command = redact_temp_paths(" ".join(cmd), *paths)
     if "Unable to connect" in stderr or "connect: no route to host" in stderr:
         return DiagramResult(
             success=False,
             error="Cannot reach the Kubernetes API server. "
                   "Start your cluster (e.g. minikube start, kind create cluster) "
                   "and verify your kubeconfig with: kubectl config current-context",
-            command=" ".join(cmd),
+            command=command,
             stdout=stdout,
             stderr=stderr,
         )
     return DiagramResult(
         success=False,
         error="kubectl-diagrams failed. See command output below.",
-        command=" ".join(cmd),
+        command=command,
         stdout=stdout,
         stderr=stderr,
     )
@@ -181,6 +182,7 @@ def generate_from_cluster(
 ) -> DiagramResult:
     """Generate diagram using kubectl-diagrams plugin directly."""
     cmd: List[str] = []
+    requested_output = png_output = dot_output = None
     try:
         resources_arg = ','.join(resource_types)
         base_name = f"cluster-diagram-{uuid.uuid4().hex[:8]}"
@@ -211,14 +213,14 @@ def generate_from_cluster(
         stderr_output = proc.stderr or ""
 
         if proc.returncode != 0 or has_fatal_error(stdout_output, stderr_output):
-            return _make_diagrams_error(stdout_output, stderr_output, cmd)
+            return _make_diagrams_error(stdout_output, stderr_output, cmd, requested_output, png_output, dot_output)
 
         if output_format == "dot_json":
             if not os.path.exists(dot_output):
                 return DiagramResult(
                     success=False,
-                    error=f"Output file not found: {dot_output}",
-                    command=" ".join(cmd),
+                    error=f"Output file not found: {os.path.basename(dot_output)}",
+                    command=redact_temp_paths(" ".join(cmd), requested_output, png_output, dot_output),
                     stdout=stdout_output,
                     stderr=stderr_output
                 )
@@ -227,7 +229,7 @@ def generate_from_cluster(
                 return DiagramResult(
                     success=False,
                     error="dot -Tjson conversion failed (is graphviz installed?).",
-                    command=" ".join(cmd),
+                    command=redact_temp_paths(" ".join(cmd), requested_output, png_output, dot_output),
                     stdout=stdout_output,
                     stderr=stderr_output
                 )
@@ -237,8 +239,8 @@ def generate_from_cluster(
             if output_info is None:
                 return DiagramResult(
                     success=False,
-                    error=f"Output file not found: {requested_output}",
-                    command=" ".join(cmd),
+                    error=f"Output file not found: {os.path.basename(requested_output)}",
+                    command=redact_temp_paths(" ".join(cmd), requested_output, png_output, dot_output),
                     stdout=stdout_output,
                     stderr=stderr_output
                 )
@@ -254,7 +256,7 @@ def generate_from_cluster(
             mime_type=MIME_TYPES.get(produced_format, "application/octet-stream"),
             filename=f"{base_name}.{produced_format}",
             message="Diagram successfully generated from cluster resources using kubectl-diagrams.",
-            command=" ".join(cmd),
+            command=redact_temp_paths(" ".join(cmd), requested_output, png_output, dot_output),
             stdout=stdout_output,
             stderr=stderr_output
         )
@@ -271,11 +273,11 @@ def generate_from_cluster(
         return DiagramResult(
             success=False,
             error="Command timed out. The cluster might be slow or unresponsive.",
-            command=" ".join(cmd) or "kubectl-diagrams"
+            command=redact_temp_paths(" ".join(cmd), requested_output, png_output, dot_output) or "kubectl-diagrams"
         )
     except Exception:
         return DiagramResult(
             success=False,
             error=log_unexpected_error(logger, "generating diagram from cluster"),
-            command=" ".join(cmd) or "kubectl-diagrams"
+            command=redact_temp_paths(" ".join(cmd), requested_output, png_output, dot_output) or "kubectl-diagrams"
         )
