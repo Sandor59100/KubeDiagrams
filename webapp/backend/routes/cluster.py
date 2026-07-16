@@ -8,7 +8,9 @@ from services import (
     get_resource_types,
     get_current_context,
 )
-from utils import InputValidator, ResponseBuilder
+from utils import InputValidator, ResponseBuilder, get_app_logger, log_unexpected_error
+
+logger = get_app_logger(__name__)
 
 cluster_bp = Blueprint('cluster', __name__)
 
@@ -21,8 +23,8 @@ def get_context():
         return ResponseBuilder.success({"context": context})
     except RuntimeError as e:
         return ResponseBuilder.error(str(e))
-    except Exception as e:
-        return ResponseBuilder.error(f"Unexpected error: {str(e)}")
+    except Exception:
+        return ResponseBuilder.error(log_unexpected_error(logger, "fetching cluster context"))
 
 
 @cluster_bp.route('/api/cluster/namespaces', methods=['GET'])
@@ -36,8 +38,8 @@ def list_namespaces():
         })
     except RuntimeError as e:
         return ResponseBuilder.error(str(e))
-    except Exception as e:
-        return ResponseBuilder.error(f"Unexpected error: {str(e)}")
+    except Exception:
+        return ResponseBuilder.error(log_unexpected_error(logger, "fetching namespaces"))
 
 
 @cluster_bp.route('/api/cluster/resource-types', methods=['GET'])
@@ -51,8 +53,8 @@ def list_resource_types():
         })
     except RuntimeError as e:
         return ResponseBuilder.error(str(e))
-    except Exception as e:
-        return ResponseBuilder.error(f"Unexpected error: {str(e)}")
+    except Exception:
+        return ResponseBuilder.error(log_unexpected_error(logger, "fetching resource types"))
 
 
 @cluster_bp.route('/api/cluster/generate', methods=['POST'])
@@ -94,7 +96,7 @@ def generate_cluster_diagram():
         return ResponseBuilder.validation_error("outputFormat", error_msg)
 
     # Extra arguments validation
-    is_valid, error_msg = InputValidator.validate_extra_args(extra_args)
+    is_valid, error_msg = InputValidator.validate_extra_args(extra_args, "kubectl-diagrams")
     if not is_valid:
         return ResponseBuilder.validation_error("extraArgs", error_msg)
 

@@ -6,7 +6,8 @@ import re
 import shlex
 import subprocess
 
-from constants import TEXT_FORMATS
+from constants import TEXT_FORMATS, MIME_TYPES
+from utils import InputValidator
 
 def has_fatal_error(stdout_txt: str, stderr_txt: str) -> bool:
     """
@@ -22,25 +23,48 @@ def has_fatal_error(stdout_txt: str, stderr_txt: str) -> bool:
     return ("error:" in (stdout_txt or "").lower()) or ("error:" in (stderr_txt or "").lower())
 
 
-def parse_extra_args(extra_args: str) -> list[str]:
+def ensure_supported_format(output_format: str) -> None:
     """
-    Parse a string of extra CLI arguments using shell-like tokenization.
+    Raise ValueError if output_format is not a known/supported format.
+
+    Args:
+        output_format: Output format to check
+
+    Raises:
+        ValueError: If output_format is not in MIME_TYPES
+    """
+    if output_format not in MIME_TYPES:
+        raise ValueError(f"Unsupported output format: {output_format!r}")
+
+
+def parse_extra_args(extra_args: str, tool: str) -> list[str]:
+    """
+    Parse a string of extra CLI arguments using shell-like tokenization,
+    rejecting any flag not in that tool's allowlist (EXTRA_ARGS_ALLOWED_FLAGS).
 
     Args:
         extra_args: Space-separated argument string (may include quoted tokens)
+        tool: Key into EXTRA_ARGS_ALLOWED_FLAGS identifying the target CLI tool
 
     Returns:
         list[str]: Parsed argument tokens
 
     Raises:
-        ValueError: If the argument string has invalid shell syntax
+        ValueError: If the argument string has invalid shell syntax, or
+            contains a flag not allowed for this tool
     """
     if not extra_args or not extra_args.strip():
         return []
     try:
-        return shlex.split(extra_args.strip())
+        tokens = shlex.split(extra_args.strip())
     except Exception as e:
         raise ValueError(f"Invalid extraArgs: {e}")
+
+    bad_flag = InputValidator.find_disallowed_flag(tokens, tool)
+    if bad_flag:
+        raise ValueError(f"Extra arg flag '{bad_flag}' is not allowed.")
+
+    return tokens
 
 
 def encode_content(content: bytes, output_format: str) -> str:

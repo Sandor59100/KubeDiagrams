@@ -7,9 +7,12 @@ import tempfile
 from typing import List, Optional, Dict, Any
 
 from constants import MIME_TYPES
+from utils import get_app_logger, log_unexpected_error
 from .models import DiagramResult
 from .file_manager import FileManager
 from .utils import parse_extra_args, has_fatal_error, encode_content, dot_to_dot_json
+
+logger = get_app_logger(__name__)
 
 COMMON_RESOURCE_TYPES = frozenset({
     'pods', 'services', 'deployments', 'replicasets', 'statefulsets',
@@ -81,8 +84,8 @@ def get_namespaces() -> List[str]:
         raise
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Could not parse kubectl output: {str(e)}")
-    except Exception as e:
-        raise RuntimeError(f"Unexpected error while fetching namespaces: {str(e)}")
+    except Exception:
+        raise RuntimeError(log_unexpected_error(logger, "fetching namespaces"))
 
 
 def get_resource_types() -> List[Dict[str, Any]]:
@@ -129,8 +132,8 @@ def get_resource_types() -> List[Dict[str, Any]]:
         _raise_connection_error(error_msg, f"kubectl error while fetching resource types: {error_msg[:200]}")
     except RuntimeError:
         raise
-    except Exception as e:
-        raise RuntimeError(f"Unexpected error while fetching resource types: {str(e)}")
+    except Exception:
+        raise RuntimeError(log_unexpected_error(logger, "fetching resource types"))
 
 
 def get_current_context() -> str:
@@ -143,8 +146,8 @@ def get_current_context() -> str:
         raise RuntimeError(f"No active kubectl context found: {error_msg}")
     except RuntimeError:
         raise
-    except Exception as e:
-        raise RuntimeError(f"Unexpected error while fetching context: {str(e)}")
+    except Exception:
+        raise RuntimeError(log_unexpected_error(logger, "fetching context"))
 
 
 def _make_diagrams_error(stdout: str, stderr: str, cmd: List[str]) -> DiagramResult:
@@ -201,7 +204,7 @@ def generate_from_cluster(
             cmd.append("--without-namespace")
 
         if extra_args.strip():
-            cmd.extend(parse_extra_args(extra_args))
+            cmd.extend(parse_extra_args(extra_args, "kubectl-diagrams"))
 
         proc = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=60)
         stdout_output = proc.stdout or ""
@@ -270,9 +273,9 @@ def generate_from_cluster(
             error="Command timed out. The cluster might be slow or unresponsive.",
             command=" ".join(cmd) or "kubectl-diagrams"
         )
-    except Exception as e:
+    except Exception:
         return DiagramResult(
             success=False,
-            error=f"Unexpected error: {str(e)}",
+            error=log_unexpected_error(logger, "generating diagram from cluster"),
             command=" ".join(cmd) or "kubectl-diagrams"
         )
