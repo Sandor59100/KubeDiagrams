@@ -55,16 +55,8 @@ def _connection_error_message(error_msg: str, fallback_msg: str) -> str:
 
 
 def _run_kubectl(cmd: List[str], timeout: int) -> tuple[Optional[subprocess.CompletedProcess], Optional[str]]:
-    """
-    Run a kubectl command.
-
-    Returns:
-        tuple: (proc, error_message) - exactly one is None. CalledProcessError
-        is not caught here and propagates, since callers need e.stderr to
-        build a context-specific message.
-    """
     try:
-        return subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=timeout), None
+        return subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=timeout), None
     except FileNotFoundError:
         return None, _KUBECTL_NOT_FOUND
     except subprocess.TimeoutExpired:
@@ -80,13 +72,13 @@ def get_namespaces() -> tuple[Optional[List[str]], Optional[str]]:
         proc, error = _run_kubectl(["kubectl", "get", "namespaces", "-o", "json"], timeout=20)
         if error:
             return None, error
+        if proc.returncode != 0:
+            error_msg = proc.stderr.strip() if proc.stderr else f"kubectl exited with code {proc.returncode}"
+            return None, _connection_error_message(error_msg, f"kubectl error while fetching namespaces: {error_msg[:200]}")
         result = json.loads(proc.stdout)
         return sorted([item["metadata"]["name"] for item in result.get("items", [])]), None
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.strip() if e.stderr else str(e)
-        return None, _connection_error_message(error_msg, f"kubectl error while fetching namespaces: {error_msg[:200]}")
-    except json.JSONDecodeError as e:
-        return None, f"Could not parse kubectl output: {str(e)}"
+    except json.JSONDecodeError:
+        return None, log_unexpected_error(logger, "parsing kubectl output")
     except Exception:
         return None, log_unexpected_error(logger, "fetching namespaces")
 
@@ -103,6 +95,9 @@ def get_resource_types() -> tuple[Optional[List[Dict[str, Any]]], Optional[str]]
         )
         if error:
             return None, error
+        if proc.returncode != 0:
+            error_msg = proc.stderr.strip() if proc.stderr else f"kubectl exited with code {proc.returncode}"
+            return None, _connection_error_message(error_msg, f"kubectl error while fetching resource types: {error_msg[:200]}")
 
         resources = []
         seen = set()
@@ -133,9 +128,6 @@ def get_resource_types() -> tuple[Optional[List[Dict[str, Any]]], Optional[str]]
 
         resources.sort(key=lambda x: (not x['isCommon'], x['name']))
         return resources, None
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.strip() if e.stderr else str(e)
-        return None, _connection_error_message(error_msg, f"kubectl error while fetching resource types: {error_msg[:200]}")
     except Exception:
         return None, log_unexpected_error(logger, "fetching resource types")
 
@@ -146,10 +138,10 @@ def get_current_context() -> tuple[Optional[str], Optional[str]]:
         proc, error = _run_kubectl(["kubectl", "config", "current-context"], timeout=5)
         if error:
             return None, error
+        if proc.returncode != 0:
+            error_msg = proc.stderr.strip() if proc.stderr else f"kubectl exited with code {proc.returncode}"
+            return None, f"No active kubectl context found: {error_msg}"
         return proc.stdout.strip(), None
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.strip() if e.stderr else str(e)
-        return None, f"No active kubectl context found: {error_msg}"
     except Exception:
         return None, log_unexpected_error(logger, "fetching context")
 
