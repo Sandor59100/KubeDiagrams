@@ -27,17 +27,16 @@ class DiagramResult:
 
     def to_dict(self) -> dict:
         """Converts the DiagramResult to a dictionary."""
-        result = {
-            "command": self.command,
-            "stdout": self.stdout or "",
-            "stderr": self.stderr or ""
-        }
+        result = {}
         if self.success:
             result.update({
                 "diagram": self.diagram,
                 "mimeType": self.mime_type,
                 "filename": self.filename,
-                "message": self.message
+                "message": self.message,
+                "command": self.command,
+                "stdout": self.stdout or "",
+                "stderr": self.stderr or "",
             })
         else:
             result["error"] = self.error
