@@ -9,6 +9,13 @@ import subprocess
 from constants import TEXT_FORMATS, MIME_TYPES
 from utils import InputValidator
 
+def redact_temp_paths(text: str, *paths: str) -> str:  
+    for path in paths:
+        if path:
+            text = text.replace(path, os.path.basename(path))
+    return text
+
+
 def has_fatal_error(stdout_txt: str, stderr_txt: str) -> bool:
     """
     Check whether subprocess output contains a fatal error marker.
@@ -23,17 +30,26 @@ def has_fatal_error(stdout_txt: str, stderr_txt: str) -> bool:
     return ("error:" in (stdout_txt or "").lower()) or ("error:" in (stderr_txt or "").lower())
 
 
-def ensure_supported_format(output_format: str) -> None:
+_SAFE_FORMAT_EXTENSIONS = {fmt: fmt for fmt in MIME_TYPES}
+
+
+def get_safe_format_extension(output_format: str) -> str:
     """
-    Raise ValueError if output_format is not a known/supported format.
+    Look up output_format in a hardcoded allowlist and return the matching
+    literal extension string.
 
     Args:
         output_format: Output format to check
 
+    Returns:
+        str: The same format string, sourced from a hardcoded mapping
+
     Raises:
         ValueError: If output_format is not in MIME_TYPES
     """
-    if output_format not in MIME_TYPES:
+    try:
+        return _SAFE_FORMAT_EXTENSIONS[output_format]
+    except KeyError:
         raise ValueError(f"Unsupported output format: {output_format!r}")
 
 
