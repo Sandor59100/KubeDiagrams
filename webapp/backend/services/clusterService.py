@@ -36,68 +36,74 @@ _CANNOT_REACH_API = (
 )
 
 
-def _raise_connection_error(error_msg: str, fallback_msg: str) -> None:
-    """Raise RuntimeError with a user-friendly message based on kubectl's connection error output."""
+def _connection_error_message(error_msg: str, fallback_msg: str) -> str:
+    """Return a user-friendly message based on kubectl's connection error output."""
     if "connect: no route to host" in error_msg or "dial tcp" in error_msg:
-        raise RuntimeError(
+        return (
             "Cannot reach the Kubernetes API server (no route to host). "
             "Start your cluster (e.g. minikube start, kind create cluster) "
             "and verify your kubeconfig with: kubectl config current-context"
         )
     if "Unable to connect to the server" in error_msg:
-        raise RuntimeError(_CANNOT_REACH_API)
+        return _CANNOT_REACH_API
     if "connection refused" in error_msg.lower():
-        raise RuntimeError(
+        return (
             "Connection to the Kubernetes API server was refused. "
             "Make sure your cluster is running and the API server is accessible."
         )
-    raise RuntimeError(fallback_msg)
+    return fallback_msg
 
 
-def _run_kubectl(cmd: List[str], timeout: int) -> subprocess.CompletedProcess:
+def _run_kubectl(cmd: List[str], timeout: int) -> tuple[Optional[subprocess.CompletedProcess], Optional[str]]:
     """
-    Run a kubectl command and return the completed process.
-    Raises RuntimeError if kubectl is not installed or the command times out.
-    CalledProcessError propagates for the caller to handle context-specifically.
+    Run a kubectl command.
+
+    Returns:
+        tuple: (proc, error_message) - exactly one is None. CalledProcessError
+        is not caught here and propagates, since callers need e.stderr to
+        build a context-specific message.
     """
     try:
-        return subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=timeout)
+        return subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=timeout), None
     except FileNotFoundError:
-        raise RuntimeError(_KUBECTL_NOT_FOUND)
+        return None, _KUBECTL_NOT_FOUND
     except subprocess.TimeoutExpired:
-        raise RuntimeError(
+        return None, (
             f"kubectl timed out after {timeout}s. "
             "Check that your cluster is running and reachable, then try again."
         )
 
 
-def get_namespaces() -> List[str]:
+def get_namespaces() -> tuple[Optional[List[str]], Optional[str]]:
     """Retrieve the sorted list of namespace names from the connected Kubernetes cluster via kubectl."""
     try:
-        proc = _run_kubectl(["kubectl", "get", "namespaces", "-o", "json"], timeout=20)
+        proc, error = _run_kubectl(["kubectl", "get", "namespaces", "-o", "json"], timeout=20)
+        if error:
+            return None, error
         result = json.loads(proc.stdout)
-        return sorted([item["metadata"]["name"] for item in result.get("items", [])])
+        return sorted([item["metadata"]["name"] for item in result.get("items", [])]), None
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr.strip() if e.stderr else str(e)
-        _raise_connection_error(error_msg, f"kubectl error while fetching namespaces: {error_msg[:200]}")
-    except RuntimeError:
-        raise
+        return None, _connection_error_message(error_msg, f"kubectl error while fetching namespaces: {error_msg[:200]}")
     except json.JSONDecodeError as e:
-        raise RuntimeError(f"Could not parse kubectl output: {str(e)}")
+        return None, f"Could not parse kubectl output: {str(e)}"
     except Exception:
-        raise RuntimeError(log_unexpected_error(logger, "fetching namespaces"))
+        return None, log_unexpected_error(logger, "fetching namespaces")
 
 
-def get_resource_types() -> List[Dict[str, Any]]:
+def get_resource_types() -> tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
     """
     Retrieve all resource types known by the cluster via kubectl api-resources.
     Each entry includes name, shortNames, namespaced scope flag, and isCommon flag.
     Common types exclude events and endpoints to avoid noisy intermediate resources.
     """
     try:
-        proc = _run_kubectl(
+        proc, error = _run_kubectl(
             ["kubectl", "api-resources", "--verbs=list", "--no-headers"], timeout=30
         )
+        if error:
+            return None, error
+
         resources = []
         seen = set()
 
@@ -126,28 +132,26 @@ def get_resource_types() -> List[Dict[str, Any]]:
             })
 
         resources.sort(key=lambda x: (not x['isCommon'], x['name']))
-        return resources
+        return resources, None
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr.strip() if e.stderr else str(e)
-        _raise_connection_error(error_msg, f"kubectl error while fetching resource types: {error_msg[:200]}")
-    except RuntimeError:
-        raise
+        return None, _connection_error_message(error_msg, f"kubectl error while fetching resource types: {error_msg[:200]}")
     except Exception:
-        raise RuntimeError(log_unexpected_error(logger, "fetching resource types"))
+        return None, log_unexpected_error(logger, "fetching resource types")
 
 
-def get_current_context() -> str:
+def get_current_context() -> tuple[Optional[str], Optional[str]]:
     """Return the name of the currently active kubectl context."""
     try:
-        proc = _run_kubectl(["kubectl", "config", "current-context"], timeout=5)
-        return proc.stdout.strip()
+        proc, error = _run_kubectl(["kubectl", "config", "current-context"], timeout=5)
+        if error:
+            return None, error
+        return proc.stdout.strip(), None
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr.strip() if e.stderr else str(e)
-        raise RuntimeError(f"No active kubectl context found: {error_msg}")
-    except RuntimeError:
-        raise
+        return None, f"No active kubectl context found: {error_msg}"
     except Exception:
-        raise RuntimeError(log_unexpected_error(logger, "fetching context"))
+        return None, log_unexpected_error(logger, "fetching context")
 
 
 def _make_diagrams_error(stdout: str, stderr: str, cmd: List[str], *paths: str) -> DiagramResult:

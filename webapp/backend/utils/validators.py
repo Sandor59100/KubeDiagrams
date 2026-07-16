@@ -17,7 +17,8 @@ class InputValidator:
 
     # Valid Pattern for url
     HELM_URL_PATTERN = re.compile(
-        r'^(https?://|oci://|file://|[a-zA-Z0-9\-_]+/[a-zA-Z0-9\-_]+)'
+        r'^(https?://|oci://|file://|[a-zA-Z0-9][a-zA-Z0-9\-_]*/[a-zA-Z0-9\-_]+)'
+        r'[a-zA-Z0-9\-_./:~]*$'
     )
 
     @classmethod
@@ -84,7 +85,7 @@ class InputValidator:
         url = url.strip()
 
         # Verify the helm url pattern
-        if not cls.HELM_URL_PATTERN.match(url):
+        if not cls.HELM_URL_PATTERN.fullmatch(url):
             return False, "Invalid Helm chart URL format. Must start with http://, https://, oci://, file://, or be a chart reference."
 
         return True, None
