@@ -73,8 +73,8 @@ def parse_extra_args(extra_args: str, tool: str) -> list[str]:
         return []
     try:
         tokens = shlex.split(extra_args.strip())
-    except Exception as e:
-        raise ValueError(f"Invalid extraArgs: {e}")
+    except Exception:
+        raise ValueError("Invalid extraArgs: could not parse the value (check for unmatched quotes).")
 
     bad_flag = InputValidator.find_disallowed_flag(tokens, tool)
     if bad_flag:

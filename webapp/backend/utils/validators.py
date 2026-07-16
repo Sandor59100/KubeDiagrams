@@ -153,8 +153,8 @@ class InputValidator:
 
         try:
             tokens = shlex.split(args.strip())
-        except ValueError as e:
-            return False, f"Invalid extraArgs: {e}"
+        except ValueError:
+            return False, "Invalid extraArgs: could not parse the value (check for unmatched quotes)."
 
         bad_flag = cls.find_disallowed_flag(tokens, tool)
         if bad_flag:
