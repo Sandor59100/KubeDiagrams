@@ -15,11 +15,15 @@ class InputValidator:
 
     SUPPORTED_FORMATS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'pdf', 'dot', 'dot_json', 'drawio', 'mermaid', 'd2']
 
-    # Valid Pattern for url
-    HELM_URL_PATTERN = re.compile(
-        r'^(https?://|oci://|file://|[a-zA-Z0-9][a-zA-Z0-9\-_]*/[a-zA-Z0-9\-_]+)'
-        r'[a-zA-Z0-9\-_./:~]*$'
-    )
+    HELM_SCHEME_URL_PATTERN = re.compile(r'^(https?|oci|file)://[a-zA-Z0-9\-_./:~]*$')
+    HELM_CHART_REF_PATTERN = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9\-_]*/[a-zA-Z0-9\-_]+$')
+
+    @classmethod
+    def is_valid_helm_url(cls, url: str) -> bool:
+        return bool(
+            cls.HELM_SCHEME_URL_PATTERN.fullmatch(url)
+            or cls.HELM_CHART_REF_PATTERN.fullmatch(url)
+        )
 
     @classmethod
     def validate_manifest(cls, content: str) -> Tuple[bool, Optional[str]]:
@@ -85,7 +89,7 @@ class InputValidator:
         url = url.strip()
 
         # Verify the helm url pattern
-        if not cls.HELM_URL_PATTERN.fullmatch(url):
+        if not cls.is_valid_helm_url(url):
             return False, "Invalid Helm chart URL format. Must start with http://, https://, oci://, file://, or be a chart reference."
 
         return True, None

@@ -32,7 +32,7 @@ def generate_from_helm(
     """
     safe_ext = get_safe_format_extension(output_format)
 
-    if not InputValidator.HELM_URL_PATTERN.fullmatch(chart_url):
+    if not InputValidator.is_valid_helm_url(chart_url):
         raise ValueError("Invalid Helm chart URL format.")
 
     # Friendly display name derived from the chart, sanitized. Used only for
