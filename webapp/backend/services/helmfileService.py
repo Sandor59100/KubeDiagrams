@@ -3,9 +3,12 @@ import subprocess
 import os
 
 from constants import MIME_TYPES
+from utils import get_app_logger, log_unexpected_error
 from .models import DiagramResult
 from .file_manager import FileManager
-from .utils import parse_extra_args, has_fatal_error, encode_content, dot_to_dot_json
+from .utils import parse_extra_args, has_fatal_error, encode_content, dot_to_dot_json, ensure_supported_format
+
+logger = get_app_logger(__name__)
 
 
 def generate_from_helmfile(
@@ -26,6 +29,8 @@ def generate_from_helmfile(
     Returns:
         DiagramResult: Result of the generation
     """
+    ensure_supported_format(output_format)
+
     with FileManager.create_temp_file(helmfile_content, suffix=".yaml", mode='wb') as temp_helmfile_path:
         output_path = temp_helmfile_path + f".{output_format}"
         dot_output_path = temp_helmfile_path + ".dot" if output_format == "dot_json" else None
@@ -57,7 +62,7 @@ def generate_from_helmfile(
             if without_namespace:
                 cmd.append("--without-namespace")
             if extra_args.strip():
-                cmd.extend(parse_extra_args(extra_args))
+                cmd.extend(parse_extra_args(extra_args, "kube-diagrams"))
 
             kube_proc = subprocess.run(
                 cmd,
@@ -131,10 +136,10 @@ def generate_from_helmfile(
                 error=str(e),
                 command=" ".join(cmd) if 'cmd' in locals() else None
             )
-        except Exception as e:
+        except Exception:
             FileManager.cleanup_files(output_path, dot_output_path)
             return DiagramResult(
                 success=False,
-                error=str(e),
+                error=log_unexpected_error(logger, "generating diagram from Helmfile"),
                 command=" ".join(cmd) if 'cmd' in locals() else None
             )

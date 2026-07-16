@@ -3,9 +3,12 @@ import os
 import subprocess
 
 from constants import MIME_TYPES
+from utils import get_app_logger, log_unexpected_error
 from .models import DiagramResult
 from .file_manager import FileManager
 from .utils import parse_extra_args, has_fatal_error, encode_content, dot_to_dot_json
+
+logger = get_app_logger(__name__)
 
 
 def generate_from_manifest(
@@ -39,7 +42,7 @@ def generate_from_manifest(
             if without_namespace:
                 cmd.append("--without-namespace")
             if extra_args.strip():
-                cmd.extend(parse_extra_args(extra_args))
+                cmd.extend(parse_extra_args(extra_args, "kube-diagrams"))
 
             # Execution
             proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
@@ -113,11 +116,11 @@ def generate_from_manifest(
                 error=str(e),
                 command=" ".join(cmd) if 'cmd' in locals() else None
             )
-        except Exception as e:
+        except Exception:
             FileManager.cleanup_files(requested_output, png_output, dot_output)
             return DiagramResult(
                 success=False,
-                error=f"Internal error: {e}",
+                error=log_unexpected_error(logger, "generating diagram from manifest"),
                 command=" ".join(cmd) if 'cmd' in locals() else None
             )
 

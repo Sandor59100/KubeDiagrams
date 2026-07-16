@@ -4,9 +4,12 @@ import os
 from urllib.parse import urlparse
 
 from constants import MIME_TYPES
+from utils import InputValidator, get_app_logger, log_unexpected_error
 from .models import DiagramResult
 from .file_manager import FileManager
-from .utils import parse_extra_args, has_fatal_error, encode_content, dot_to_dot_json
+from .utils import parse_extra_args, has_fatal_error, encode_content, dot_to_dot_json, ensure_supported_format
+
+logger = get_app_logger(__name__)
 
 
 def generate_from_helm(
@@ -25,6 +28,8 @@ def generate_from_helm(
     Returns:
         DiagramResult: Result of the generation
     """
+    ensure_supported_format(output_format)
+
     # Extract base name for output file
     parsed = urlparse(chart_url)
     base_name = os.path.basename(parsed.path).replace(".tgz", "").replace(".tar.gz", "")
@@ -32,6 +37,9 @@ def generate_from_helm(
     # OCI URLs use the last path segment as chart name
     if chart_url.startswith('oci://'):
         base_name = chart_url.rstrip('/').split('/')[-1]
+
+    # Sanitize so a crafted chart URL can't influence the output path beyond the base name
+    base_name = InputValidator.sanitize_filename(base_name) or "chart"
 
     dot_output = os.path.abspath(f"{base_name}.dot") if output_format == "dot_json" else None
     requested_output = os.path.abspath(f"{base_name}.{output_format}")
@@ -41,7 +49,7 @@ def generate_from_helm(
         # Command uses helm-diagrams instead of helm
         cmd = ["helm-diagrams", chart_url, "-o", dot_output or requested_output]
         if extra_args.strip():
-            cmd.extend(parse_extra_args(extra_args))
+            cmd.extend(parse_extra_args(extra_args, "helm-diagrams"))
 
         # Run the command and capture output
         proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
@@ -145,11 +153,11 @@ def generate_from_helm(
             error=str(e),
             command=" ".join(cmd) if 'cmd' in locals() else None
         )
-    except Exception as e:
+    except Exception:
         FileManager.cleanup_files(requested_output, png_output, dot_output)
         return DiagramResult(
             success=False,
-            error=f"Internal error: {e}",
+            error=log_unexpected_error(logger, "generating diagram from Helm chart"),
             command=" ".join(cmd) if 'cmd' in locals() else None
         )
 

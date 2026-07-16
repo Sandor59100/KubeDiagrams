@@ -4,6 +4,8 @@ import tempfile
 from typing import Optional
 from contextlib import contextmanager
 
+from .utils import ensure_supported_format
+
 class FileManager:
     """Temporary file manager."""
     @staticmethod
@@ -57,7 +59,12 @@ class FileManager:
             output_format: Requested output format
         Returns:
             tuple: (requested format_path, fallback png_path)
+
+        Raises:
+            ValueError: If output_format is not a supported/known format.
         """
+        ensure_supported_format(output_format)
+
         base_without_ext = os.path.splitext(base_path)[0]
         requested_output = f"{base_without_ext}.{output_format}"
         png_output = f"{base_without_ext}.png"
