@@ -1,0 +1,73 @@
+# For most projects, this workflow file will not need changing; you simply need
+# to commit it to your repository.
+#
+# You may wish to alter this file to override the set of languages analyzed,
+# or to provide custom queries or build logic.
+
+name: "CodeQL Advanced"
+
+on:
+  push:
+    branches:
+      - main
+      - feature/mermaid-format
+
+  pull_request:
+    branches:
+      - main
+
+  schedule:
+    - cron: "29 13 * * 6"
+
+  # Permet de lancer le scan manuellement depuis l'onglet Actions.
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+
+          - language: javascript-typescript
+            build-mode: none
+
+          - language: python
+            build-mode: none
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Run manual build steps
+        if: matrix.build-mode == 'manual'
+        shell: bash
+        run: |
+          echo 'If you are using a "manual" build mode for one or more of the'
+          echo 'languages you are analyzing, replace this with the commands'
+          echo 'required to build your project.'
+          exit 1
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
